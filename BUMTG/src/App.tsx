@@ -4,6 +4,7 @@ import { auth, googleProvider } from './firebase'
 import Dashboard from './Dashboard'
 import Tournaments from './Tournaments'
 import CreateTournament from './CreateTournament'
+import TournamentDetail from './TournamentDetail'
 
 function HomePage() {
   const navigate = useNavigate()
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="tournaments" element={<Tournaments />} />
       <Route path="create-tournament" element={<CreateTournament />} />
+      <Route path="/tournament/:id" element={<TournamentDetail />} />
     </Routes>
   )
 }

@@ -8,6 +8,7 @@ export default function CreateTournament() {
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [format, setFormat] = useState<'swiss' | 'draft' | ''>('') // <-- New state
   const [uid, setUid] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState<string | null>(null)
 
@@ -31,15 +32,16 @@ export default function CreateTournament() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!uid || !displayName) return
+    const user = auth.currentUser
+    if (!user || !format) return // Ensure format is selected
 
     const datetime = new Date(`${date}T${time}`)
 
     await addDoc(collection(db, 'tournaments'), {
       name,
       startTime: Timestamp.fromDate(datetime),
-      creatorUid: uid,
-      creatorName: displayName,
+      creatorUid: user.uid,
+      format, // <-- Save format
     })
 
     navigate('/tournaments')
@@ -62,6 +64,31 @@ export default function CreateTournament() {
       <div>
         <label>Start Time:</label><br />
         <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
+      </div>
+
+      <div style={{ marginTop: '10px' }}>
+        <label>Tournament Format:</label><br />
+        <label>
+          <input
+            type="radio"
+            value="swiss"
+            checked={format === 'swiss'}
+            onChange={() => setFormat('swiss')}
+            required
+          />
+          Swiss
+        </label>
+        <br />
+        <label>
+          <input
+            type="radio"
+            value="draft"
+            checked={format === 'draft'}
+            onChange={() => setFormat('draft')}
+            required
+          />
+          Draft
+        </label>
       </div>
 
       <button type="submit" style={{ marginTop: '10px' }}>Create</button>
