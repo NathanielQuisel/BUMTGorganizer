@@ -31,77 +31,85 @@ export default function TournamentDetail() {
   const [confirmingWinner, setConfirmingWinner] = useState(false)
   const [pendingWinnerUid, setPendingWinnerUid] = useState<string | null>(null)
   const [wins, setWins] = useState<Record<string, number>>({})
-
-
-
+  const [results, setResults] = useState<Record<string, Record<string, string>>>({})
 
     useEffect(() => {
         if (!id) return
 
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (!user) return
+        if (!user) return
 
-            setUserUid(user.uid)
+        setUserUid(user.uid)
 
-            const docRef = doc(db, 'tournaments', id)
-            const docSnap = await getDoc(docRef)
+        const docRef = doc(db, 'tournaments', id)
+        const docSnap = await getDoc(docRef)
 
-            if (docSnap.exists()) {
-                const data = docSnap.data()
-                setName(data.name)
-                setCreatorUid(data.creatorUid)
-                setParticipants(data.participants || [])
-                setFormat(data.format || '')
+        if (docSnap.exists()) {
+            const data = docSnap.data()
+            setName(data.name)
+            setCreatorUid(data.creatorUid)
+            setParticipants(data.participants || [])
+            setFormat(data.format || '')
+            setIsOwner(data.creatorUid === user.uid)
+            setHasJoined((data.participants || []).includes(user.uid))
+            const currentRound = data.round || null
+            setRound(currentRound)
+            setWins(data.wins || {})
+            setResults(data.results || {})
 
-                setIsOwner(data.creatorUid === user.uid)
-                setHasJoined((data.participants || []).includes(user.uid))
-                setPairings(data.currentPairings || [])
-                for (const pair of data.currentPairings || []) {
-                    if (pair.player1 === user.uid) {
-                        setUserOpponent(pair.player2)
-                        break
-                    } else if (pair.player2 === user.uid) {
-                        setUserOpponent(pair.player1)
-                        break
-                    }
-                }
-                setRound(data.round || null)
-                setWins(data.wins || {})
+            const allPairings = data.pairings || {}
+            const roundPairings: Pair[] = allPairings[currentRound] || []
+            setPairings(roundPairings)
+            for (const pair of roundPairings) {
+            if (pair.player1 === user.uid) {
+                setUserOpponent(pair.player2)
+                break
+            } else if (pair.player2 === user.uid) {
+                setUserOpponent(pair.player1)
+                break
             }
+            }
+        }
         })
 
         return () => unsubscribe()
-    }, [id])
+  }, [id])
 
 
   useEffect(() => {
     const fetchNames = async () => {
-        const names: string[] = await Promise.all(
+      const names: string[] = await Promise.all(
         participants.map(async (uid) => {
-            try {
+          try {
             const userSnap = await getDoc(doc(db, 'users', uid))
             if (userSnap.exists()) {
-                return userSnap.data().displayName || '(No name)'
+              return userSnap.data().displayName || '(No name)'
             } else {
-                return '(Unknown)'
+              return '(Unknown)'
             }
-            } catch {
+          } catch {
             return '(Error)'
-            }
+          }
         })
-        )
-        setParticipantNames(names)
-        const map: Record<string, string> = {}
-        participants.forEach((uid, i) => {
-            map[uid] = names[i]
-        })
-        setParticipantMap(map)
+      )
+      setParticipantNames(names)
+      const map: Record<string, string> = {}
+      participants.forEach((uid, i) => {
+        map[uid] = names[i]
+      })
+      setParticipantMap(map)
     }
 
     if (participants.length > 0) {
-        fetchNames()
+      fetchNames()
     }
   }, [participants])
+
+  const getMatchKey = (uid1: string, uid2: string) =>
+    [uid1, uid2].sort().join('_')
+
+  const matchKey = userUid && userOpponent ? getMatchKey(userUid, userOpponent) : null
+  const matchWinnerUid = matchKey && round !== null ? results[round]?.[matchKey] : null
 
   const handleJoin = async () => {
     if (!id || !userUid) return
@@ -121,38 +129,44 @@ export default function TournamentDetail() {
     setParticipants((prev) => prev.filter((uid) => uid !== userUid))
   }
 
-  const handleRandomizePairings = async () => {
-    if (!id) return
-    const shuffled = [...participants].sort(() => Math.random() - 0.5)
-    const pairs: Pair[] = []
+    const handleRandomizePairings = async () => {
+    if (!id) return;
+
+    const shuffled = [...participants].sort(() => Math.random() - 0.5);
+    const pairs: Pair[] = [];
 
     for (let i = 0; i < shuffled.length; i += 2) {
-        const p1 = shuffled[i]
-        const p2 = shuffled[i + 1] || null
-        pairs.push({ player1: p1, player2: p2 })
+        const p1 = shuffled[i];
+        const p2 = shuffled[i + 1] || null;
+        pairs.push({ player1: p1, player2: p2 });
     }
 
     try {
-        await updateDoc(doc(db, 'tournaments', id), {
-            currentPairings: pairs,
-        })
-        setPairings(pairs)
-        console.log('Pairings saved successfully')
-    } catch (error) {
-        console.error('Error saving pairings:', error)
-    }
-  }
+        const docRef = doc(db, 'tournaments', id);
 
- const handleStartTournament = async () => {
+        // Overwrite the pairings object with only round 1
+        await updateDoc(docRef, {
+        pairings: { 1: pairs },
+        results: { 1: {} }, // reset results for round 1
+        });
+
+        setPairings(pairs);
+        setResults({});
+        console.log('Pairings for round 1 created and previous data reset.');
+    } catch (error) {
+        console.error('Error saving pairings:', error);
+    }
+    };
+
+
+  const handleStartTournament = async () => {
     if (!id) return
 
     try {
-        await updateDoc(doc(db, 'tournaments', id), {
-            round: 1,
-        })
-        setRound(1)
+      await updateDoc(doc(db, 'tournaments', id), { round: 1, results: { 1: {} } })
+      setRound(1)
     } catch (err) {
-        console.error('Failed to start tournament:', err)
+      console.error('Failed to start tournament:', err)
     }
   }
 
@@ -168,24 +182,87 @@ export default function TournamentDetail() {
   }
 
   const finalizeWinner = async () => {
-    if (!id || !pendingWinnerUid) return
+    if (!id || !pendingWinnerUid || !userUid || !userOpponent || round === null) return
+
+    const matchKey = getMatchKey(userUid, userOpponent)
 
     const tournamentRef = doc(db, 'tournaments', id)
     const tournamentSnap = await getDoc(tournamentRef)
     if (!tournamentSnap.exists()) return
 
     const data = tournamentSnap.data()
-    const wins = data.wins || {}  // wins is a map: { [uid]: number }
+    const wins = data.wins || {}
+    const results = data.results || {}
 
     const updatedWins = {
-        ...wins,
-        [pendingWinnerUid]: (wins[pendingWinnerUid] || 0) + 1,
+      ...wins,
+      [pendingWinnerUid]: (wins[pendingWinnerUid] || 0) + 1,
     }
 
-    await updateDoc(tournamentRef, { wins: updatedWins })
+    const updatedResults = {
+      ...results,
+      [round]: {
+        ...(results[round] || {}),
+        [matchKey]: pendingWinnerUid,
+      }
+    }
+
+    await updateDoc(tournamentRef, {
+      wins: updatedWins,
+      results: updatedResults,
+    })
+
+    setWins(updatedWins)
+    setResults(updatedResults)
     setConfirmingWinner(false)
     setPendingWinnerUid(null)
   }
+
+  const handlePairNextRound = async () => {
+    if (!id || round === null) return
+
+    const nextRound = round + 1
+    const shuffled = [...participants].sort(() => Math.random() - 0.5)
+    const newPairs: Pair[] = []
+
+    for (let i = 0; i < shuffled.length; i += 2) {
+      const p1 = shuffled[i]
+      const p2 = shuffled[i + 1] || null
+      newPairs.push({ player1: p1, player2: p2 })
+    }
+
+    const docRef = doc(db, 'tournaments', id)
+    const docSnap = await getDoc(docRef)
+
+    if (!docSnap.exists()) {
+      console.error('Tournament document not found.')
+      return
+    }
+
+    const data = docSnap.data()
+    const existingPairings = data.pairings || {}
+    const existingResults = data.results || {}
+
+    const updatedPairings = {
+      ...existingPairings,
+      [nextRound]: newPairs,
+    }
+
+    const updatedResults = {
+      ...existingResults,
+      [nextRound]: {},
+    }
+
+    await updateDoc(docRef, {
+      round: nextRound,
+      pairings: updatedPairings,
+      results: updatedResults,
+    })
+
+    setRound(nextRound)
+    setPairings(newPairs)
+  }
+
 
 
   return (
@@ -195,10 +272,14 @@ export default function TournamentDetail() {
       {isOwner && (
         
         <div style={{ marginBottom: '20px' }}>
-            {isOwner && (
-                <button onClick={handleStartTournament}>
-                    {round ? 'Pair Next Round' : 'Start Tournament'}
+            {round ? (
+                <button onClick={handlePairNextRound}>
+                    {'Pair Next Round'}
                 </button>
+            ) : (
+               <button onClick={handleStartTournament}>
+                    {'Start Tournament'}
+                </button> 
             )}
             {!round && format === 'swiss' && (
                 <button onClick={handleRandomizePairings}>Randomize Pairings</button>
@@ -219,35 +300,49 @@ export default function TournamentDetail() {
         <button onClick={handleJoin}>Join Tournament</button>
       )}
 
-      {userOpponent && (
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-            <div>
-                {participantMap[userUid] || 'You'}:
-                <input
-                type="number"
-                min={0}
-                max={2}
-                value={playerScore}
-                onChange={(e) => setPlayerScore(parseInt(e.target.value))}
-                style={{ width: '40px', marginLeft: '5px' }}
-                />
-            </div>
+      {round && (
+  matchWinnerUid ? (
+    <div style={{ marginTop: '20px', fontWeight: 'bold' }}>
+      {participantMap[matchWinnerUid]} defeated {
+        participantMap[
+          matchWinnerUid === userUid ? userOpponent! : userUid
+        ]
+      }
+    </div>
+  ) : (
+    <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginTop: '20px' }}>
+      <div>
+        {participantMap[userUid] || 'You'}:
+        <input
+          type="number"
+          min={0}
+          max={2}
+          value={playerScore}
+          onChange={(e) => setPlayerScore(parseInt(e.target.value))}
+          style={{ width: '40px', marginLeft: '5px' }}
+        />
+      </div>
 
-            <div>
-                {participantMap[userOpponent] || '(Unknown)'}:
-                <input
-                type="number"
-                min={0}
-                max={2}
-                value={opponentScore}
-                onChange={(e) => setOpponentScore(parseInt(e.target.value))}
-                style={{ width: '40px', marginLeft: '5px' }}
-                />
-            </div>
+      <div>
+        {userOpponent && participantMap[userOpponent]
+          ? participantMap[userOpponent]
+          : '(Unknown)'}
+        <input
+          type="number"
+          min={0}
+          max={2}
+          value={opponentScore}
+          onChange={(e) => setOpponentScore(parseInt(e.target.value))}
+          style={{ width: '40px', marginLeft: '5px' }}
+        />
+      </div>
 
-            <button onClick={handleConfirmScores}>Confirm</button>
-            </div>
-        )}
+      <button onClick={handleConfirmScores}>Confirm</button>
+    </div>
+  )
+)}
+
+
 
         {confirmingWinner && pendingWinnerUid && (
             <div style={{
