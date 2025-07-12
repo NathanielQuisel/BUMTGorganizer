@@ -121,13 +121,25 @@ export default function TournamentDetail() {
   }
 
   const handleDrop = async () => {
-    if (!id || !userUid) return
+    if (!id || !userUid) return;
+
+    // If tournament has started, confirm before dropping
+    if (round && round >= 1) {
+        const confirmDrop = window.confirm(
+        "Are you sure you want to drop from the tournament? This action cannot be undone."
+        );
+        if (!confirmDrop) return;
+    }
+
+    // Proceed with drop
     await updateDoc(doc(db, 'tournaments', id), {
-      participants: arrayRemove(userUid),
-    })
-    setHasJoined(false)
-    setParticipants((prev) => prev.filter((uid) => uid !== userUid))
-  }
+        participants: arrayRemove(userUid),
+    });
+
+    setHasJoined(false);
+    setParticipants((prev) => prev.filter((uid) => uid !== userUid));
+  };
+
 
     const handleRandomizePairings = async () => {
     if (!id) return;
@@ -294,10 +306,11 @@ export default function TournamentDetail() {
       )}
 
 
-      {hasJoined ? (
+      {!round &&(hasJoined ? (
         <button onClick={handleDrop}>Drop from Tournament</button>
       ) : (
         <button onClick={handleJoin}>Join Tournament</button>
+      )
       )}
 
       {round && (
