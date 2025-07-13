@@ -32,6 +32,13 @@ export default function TournamentDetail() {
   const [pendingWinnerUid, setPendingWinnerUid] = useState<string | null>(null)
   const [wins, setWins] = useState<Record<string, number>>({})
   const [results, setResults] = useState<Record<string, Record<string, string>>>({})
+  const [pods, setPods] = useState<Record<string, string[]>>({})
+  const [nextPodId, setNextPodId] = useState(1)
+  const [podSizeInput, setPodSizeInput] = useState<number>(0)
+  const [draftStarted, setDraftStarted] = useState(false)
+  const [userPodId, setUserPodId] = useState<string | null>(null)
+
+
 
     useEffect(() => {
         if (!id) return
@@ -56,6 +63,13 @@ export default function TournamentDetail() {
             setRound(currentRound)
             setWins(data.wins || {})
             setResults(data.results || {})
+            setPods(data.pods || {})
+            setNextPodId(
+            data.pods ? Math.max(...Object.keys(data.pods).map(Number)) + 1 : 1
+            )
+            setDraftStarted(data.draftStarted || false);
+
+
 
             const allPairings = data.pairings || {}
             const roundPairings: Pair[] = allPairings[currentRound] || []
@@ -68,6 +82,14 @@ export default function TournamentDetail() {
                 setUserOpponent(pair.player1)
                 break
             }
+            }
+            if (data.draftStarted && data.pods) {
+                for (const [podId, members] of Object.entries(data.pods as Record<string, string[]>)) {
+                    if (members.includes(user.uid)) {
+                        setUserPodId(podId);
+                        break;
+                    }
+                }
             }
         }
         })
@@ -124,7 +146,7 @@ export default function TournamentDetail() {
     if (!id || !userUid) return;
 
     // If tournament has started, confirm before dropping
-    if (round && round >= 1) {
+    if (round || draftStarted) {
         const confirmDrop = window.confirm(
         "Are you sure you want to drop from the tournament? This action cannot be undone."
         );
@@ -173,6 +195,11 @@ export default function TournamentDetail() {
 
   const handleStartTournament = async () => {
     if (!id) return
+
+    const confirmDrop = window.confirm(
+        "Are you sure you want to start the tournament? This action cannot be undone."
+    );
+    if (!confirmDrop) return;
 
     try {
       await updateDoc(doc(db, 'tournaments', id), { round: 1, results: { 1: {} } })
@@ -275,6 +302,100 @@ export default function TournamentDetail() {
     setPairings(newPairs)
   }
 
+  const handleAddPod = async () => {
+    if (!id || podSizeInput <= 0) return
+
+    const newPod = new Array(podSizeInput).fill('')
+    const newPodId = nextPodId
+
+    const updatedPods = {
+        ...pods,
+        [newPodId]: newPod
+    }
+
+    try {
+        await updateDoc(doc(db, 'tournaments', id), {
+        pods: updatedPods
+        })
+
+        setPods(updatedPods)
+        setNextPodId(prev => prev + 1)
+    } catch (err) {
+        console.error('Failed to save pod to Firestore:', err)
+    }
+  }
+
+
+  const handleDeletePod = async (podIdToDelete: string) => {
+    if (!id) return;
+
+    const updatedPods = { ...pods };
+    delete updatedPods[podIdToDelete];
+
+    try {
+        await updateDoc(doc(db, 'tournaments', id), {
+        pods: updatedPods
+        });
+        setPods(updatedPods);
+    } catch (err) {
+        console.error('Failed to delete pod:', err);
+    }
+  };
+
+  const handleRandomizePods = async () => {
+    if (!id || Object.keys(pods).length === 0 || participants.length === 0) return;
+
+    // 1. Shuffle participants
+    const shuffled = [...participants].sort(() => Math.random() - 0.5);
+
+    // 2. Assign to pods
+    const newPods: Record<string, string[]> = {};
+    let index = 0;
+
+    for (const [podId, podArray] of Object.entries(pods)) {
+        const podSize = podArray.length;
+        newPods[podId] = [];
+
+        for (let i = 0; i < podSize && index < shuffled.length; i++) {
+        newPods[podId].push(shuffled[index]);
+        index++;
+        }
+    }
+
+    // 3. Save to database
+    try {
+        const docRef = doc(db, 'tournaments', id);
+        await updateDoc(docRef, { pods: newPods });
+        setPods(newPods);
+        console.log('Pods randomized and saved successfully.');
+    } catch (err) {
+        console.error('Error updating randomized pods:', err);
+    }
+  };
+
+  const handleStartDraft = async () => {
+    if (!id) return;
+
+    const confirmDrop = window.confirm(
+        "Are you sure you want to start the tournament? This action cannot be undone."
+    );
+    if (!confirmDrop) return;
+
+    setDraftStarted(true);
+
+    // Find which pod the current user is in
+    for (const [podId, members] of Object.entries(pods)) {
+        if (members.includes(userUid)) {
+        setUserPodId(podId);
+        break;
+        }
+    }
+
+    // Optionally save draftStarted state in Firestore if you want persistence:
+    await updateDoc(doc(db, 'tournaments', id), { draftStarted: true });
+  }
+
+
 
 
   return (
@@ -284,7 +405,7 @@ export default function TournamentDetail() {
       {isOwner && (
         
         <div style={{ marginBottom: '20px' }}>
-            {round ? (
+            {format === 'swiss' && (round ? (
                 <button onClick={handlePairNextRound}>
                     {'Pair Next Round'}
                 </button>
@@ -292,26 +413,38 @@ export default function TournamentDetail() {
                <button onClick={handleStartTournament}>
                     {'Start Tournament'}
                 </button> 
-            )}
+            ))}
             {!round && format === 'swiss' && (
                 <button onClick={handleRandomizePairings}>Randomize Pairings</button>
             )}
 
-
-            {format === 'draft' && (
-                <button>Randomize Pods</button>
+            {!draftStarted && format === 'draft' && (
+                <>
+                    <button onClick={handleStartDraft}>
+                    Start Tournament
+                    </button>
+                    <button onClick={handleRandomizePods}>
+                    Randomize Pods
+                    </button>
+                </>
             )}
 
         </div>
       )}
 
 
-      {!round &&(hasJoined ? (
-        <button onClick={handleDrop}>Drop from Tournament</button>
-      ) : (
-        <button onClick={handleJoin}>Join Tournament</button>
-      )
-      )}
+      {(!round && !draftStarted) ? (
+            hasJoined ? (
+                <button onClick={handleDrop}>Drop from Tournament</button>
+            ) : (
+                <button onClick={handleJoin}>Join Tournament</button>
+            )
+            ) : (
+            hasJoined && (
+                <button onClick={handleDrop}>Drop from Tournament</button>
+            )
+        )}
+
 
       {round && (
   matchWinnerUid ? (
@@ -387,6 +520,55 @@ export default function TournamentDetail() {
             </ul>
         </>
         )}
+
+        {format === 'draft' && (
+<div style={{ marginTop: '30px' }}>
+  <h3>Draft Pods</h3>
+
+  {Object.entries(pods)
+    .filter(([podId]) => !draftStarted || podId === userPodId)
+    .map(([podId, members]) => (
+      <div key={podId} style={{ marginBottom: '10px', border: '1px solid #ccc', padding: '10px' }}>
+        <strong>Pod {podId}</strong>:{" "}
+        {members.length > 0
+          ? members.map((uid) => participantMap[uid] || '(Unknown)').join(', ')
+          : '(empty)'}
+
+        {isOwner && !draftStarted && (
+          <button
+            onClick={() => handleDeletePod(podId)}
+            style={{ marginLeft: '10px', color: 'white', backgroundColor: 'red' }}
+          >
+            Delete Pod
+          </button>
+        )}
+
+        {draftStarted && podId === userPodId && (
+          <button style={{ marginLeft: '10px' }}>
+            Start Pod
+          </button>
+        )}
+      </div>
+    ))}
+
+
+    {isOwner && !draftStarted && (<div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+      <label>
+        Pod Size:
+        <input
+          type="number"
+          min={0}
+          value={podSizeInput}
+          onChange={e => setPodSizeInput(parseInt(e.target.value))}
+          style={{ width: '60px', marginLeft: '5px' }}
+        />
+      </label>
+      <button onClick={handleAddPod}>Add Pod</button>
+    </div>)}
+    
+  </div>
+)}
+
 
 
       <h3 style={{ marginTop: '30px' }}>Participants</h3>
