@@ -92,6 +92,7 @@ export default function CreateTournament() {
       </div>
 
       <button type="submit" style={{ marginTop: '10px' }}>Create</button>
+      <button onClick={() => navigate('/tournaments')}>Cancel</button>
     </form>
   )
 }

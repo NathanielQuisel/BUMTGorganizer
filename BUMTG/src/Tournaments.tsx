@@ -81,7 +81,11 @@ export default function Tournaments() {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h2>Tournaments</h2>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <h2>Tournaments</h2>
+    <button onClick={() => navigate('/dashboard')}>Home</button>
+  </div>
+
 
       <button onClick={() => navigate('/create-tournament')}>
         Create Tournament
