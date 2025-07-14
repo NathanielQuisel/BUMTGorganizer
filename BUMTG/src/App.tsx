@@ -10,6 +10,7 @@ import ELO from './ELO'
 import PreconLeague from './PreconLeague'
 import CreatePreconLeague from './CreatePreconLeague'
 import PreconLeagueDetail from './PreconLeagueDetail'
+import Market from './Market'
 
 
 function HomePage() {
@@ -68,6 +69,7 @@ export default function App() {
       <Route path="/precon-league" element={<PreconLeague />} />
       <Route path="/create-precon-league" element={<CreatePreconLeague />} />
       <Route path="/precon-league/:id" element={<PreconLeagueDetail />} />
+      <Route path="/market" element={<Market />} />
     </Routes>
   )
 }

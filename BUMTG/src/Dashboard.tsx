@@ -56,6 +56,9 @@ export default function Dashboard() {
             <div onClick={() => navigate('/dashboard')} style={{ cursor: 'pointer', marginBottom: '10px' }}>
             Home
             </div>
+            <div onClick={() => navigate('/market')} style={{ cursor: 'pointer', marginTop: '10px' }}>
+            Market
+            </div>
             <div onClick={() => navigate('/tournaments')} style={{ cursor: 'pointer' }}>
             Tournaments
             </div>
