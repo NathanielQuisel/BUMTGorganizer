@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { auth, db } from './firebase'
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 
 export default function PreconLeagueDetail() {
+  const navigate = useNavigate()
   const { id } = useParams()
   const [name, setName] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -68,13 +69,19 @@ export default function PreconLeagueDetail() {
     setParticipants((prev) => prev.filter((uid) => uid !== userUid));
   }
 
+  const handleSwapsClick = () => {
+    if (userUid && id) {
+        navigate(`/precon-league/${id}/swaps/${userUid}`)
+    }
+  }
+
   return (
     <div style={{ padding: '20px' }}>
         <h2>{name}</h2>
         <p>Start Date: {startDate}</p>
 
-        <button style={{ marginBottom: '10px' }}>
-        Swaps Spreadsheet
+        <button onClick = {handleSwapsClick} style={{ marginBottom: '10px' }}>
+            Swaps Spreadsheet
         </button>
 
         {isOwner && (

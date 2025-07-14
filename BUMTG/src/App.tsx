@@ -11,6 +11,7 @@ import PreconLeague from './PreconLeague'
 import CreatePreconLeague from './CreatePreconLeague'
 import PreconLeagueDetail from './PreconLeagueDetail'
 import Market from './Market'
+import PreconSwapsSpreadsheet from './PreconSwapsSpreadsheet'
 
 
 function HomePage() {
@@ -70,6 +71,7 @@ export default function App() {
       <Route path="/create-precon-league" element={<CreatePreconLeague />} />
       <Route path="/precon-league/:id" element={<PreconLeagueDetail />} />
       <Route path="/market" element={<Market />} />
+      <Route path="/precon-league/:id/swaps/:uid" element={<PreconSwapsSpreadsheet />} />
     </Routes>
   )
 }
