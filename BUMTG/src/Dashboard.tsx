@@ -59,6 +59,9 @@ export default function Dashboard() {
             <div onClick={() => navigate('/tournaments')} style={{ cursor: 'pointer' }}>
             Tournaments
             </div>
+            <div onClick={() => navigate('/precon-league')} style={{ cursor: 'pointer', marginTop: '10px' }}>
+            Precon League
+            </div>
             <div onClick={() => navigate('/elo')} style={{ cursor: 'pointer', marginTop: '10px' }}>
             ELO
             </div>

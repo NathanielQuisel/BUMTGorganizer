@@ -7,6 +7,9 @@ import Tournaments from './Tournaments'
 import CreateTournament from './CreateTournament'
 import TournamentDetail from './TournamentDetail'
 import ELO from './ELO'
+import PreconLeague from './PreconLeague'
+import CreatePreconLeague from './CreatePreconLeague'
+import PreconLeagueDetail from './PreconLeagueDetail'
 
 
 function HomePage() {
@@ -62,6 +65,9 @@ export default function App() {
       <Route path="create-tournament" element={<CreateTournament />} />
       <Route path="/tournament/:id" element={<TournamentDetail />} />
       <Route path="/elo" element={<ELO />} />
+      <Route path="/precon-league" element={<PreconLeague />} />
+      <Route path="/create-precon-league" element={<CreatePreconLeague />} />
+      <Route path="/precon-league/:id" element={<PreconLeagueDetail />} />
     </Routes>
   )
 }

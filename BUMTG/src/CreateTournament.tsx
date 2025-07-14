@@ -12,6 +12,7 @@ export default function CreateTournament() {
   const [uid, setUid] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState<string | null>(null)
 
+  //think all of this useEffect is completely unnecessary, will delete later
   useEffect(() => {
     const user = auth.currentUser
     if (user) {
