@@ -1,23 +1,44 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import { signInWithPopup } from 'firebase/auth'
-import { auth, googleProvider } from './firebase'
+import { auth, db, googleProvider } from './firebase'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import Dashboard from './Dashboard'
 import Tournaments from './Tournaments'
 import CreateTournament from './CreateTournament'
 import TournamentDetail from './TournamentDetail'
+import ELO from './ELO'
+
 
 function HomePage() {
   const navigate = useNavigate()
 
   const handleGoogleSignIn = () => {
     signInWithPopup(auth, googleProvider)
-      .then((result) => {
-        console.log('Signed in as:', result.user.email)
+      .then(async (result) => {
+        const user = result.user
+        console.log('Signed in as:', user.email)
+
+        const userRef = doc(db, 'users', user.uid)
+        const userSnap = await getDoc(userRef)
+
+        if (!userSnap.exists()) {
+          // Create new user document with default ELO
+          await setDoc(userRef, {
+            displayName: user.displayName || user.email || 'Anonymous',
+            elo: 1000
+          })
+        } else {
+          const data = userSnap.data()
+          if (data.elo === undefined) {
+            await setDoc(userRef, { elo: 1000 }, { merge: true })
+          }
+        }
+
         navigate('/dashboard')
       })
       .catch((error) => {
         alert('Google Sign-In failed: ' + error.message)
-      })
+    })
   }
 
   return (
@@ -40,6 +61,7 @@ export default function App() {
       <Route path="tournaments" element={<Tournaments />} />
       <Route path="create-tournament" element={<CreateTournament />} />
       <Route path="/tournament/:id" element={<TournamentDetail />} />
+      <Route path="/elo" element={<ELO />} />
     </Routes>
   )
 }
