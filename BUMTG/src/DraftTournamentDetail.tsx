@@ -15,7 +15,6 @@ export default function DraftTournamentDetail() {
 
   const { id } = useParams()
   const [name, setName] = useState('')
-  const [format, setFormat] = useState('')
   const [participants, setParticipants] = useState<string[]>([])
   const [isOwner, setIsOwner] = useState(false)
   const [hasJoined, setHasJoined] = useState(false)
@@ -23,7 +22,6 @@ export default function DraftTournamentDetail() {
   const [pairings, setPairings] = useState<Pair[]>([])
   const [participantMap, setParticipantMap] = useState<Record<string, string>>({})
   const [userOpponent, setUserOpponent] = useState<string | null>(null)
-  const [round, setRound] = useState<number | null>(null)
   const [playerScore, setPlayerScore] = useState(0)
   const [opponentScore, setOpponentScore] = useState(0)
   const [confirmingWinner, setConfirmingWinner] = useState(false)
@@ -36,6 +34,8 @@ export default function DraftTournamentDetail() {
   const [draftStarted, setDraftStarted] = useState(false)
   const [userPodId, setUserPodId] = useState<string | null>(null)
   const [podRounds, setPodRounds] = useState<Record<string, number>>({})
+  
+
   
 
     useEffect(() => {
@@ -53,11 +53,9 @@ export default function DraftTournamentDetail() {
             const data = docSnap.data()
             setName(data.name)
             setParticipants(data.participants || [])
-            setFormat(data.format || '')
             setIsOwner(data.creatorUid === user.uid)
             setHasJoined((data.participants || []).includes(user.uid))
             const currentRound = data.round || null
-            setRound(currentRound)
             setWins(data.wins || {})
             setResults(data.results || {})
             setPods(data.pods || {})
@@ -123,19 +121,21 @@ export default function DraftTournamentDetail() {
       fetchNames()
     }
   }, [participants])
+  const currentRound = userPodId !== null ? podRounds[userPodId] : 0;
 
   const getMatchKey = (uid1: string, uid2: string) =>
     [uid1, uid2].sort().join('_')
 
   const matchKey = userUid && userOpponent ? getMatchKey(userUid, userOpponent) : null
-  const matchWinnerUid = matchKey && round !== null ? results[round]?.[matchKey] : null
+  //change this so it checks based on the current users pod round
+  const matchWinnerUid = matchKey && currentRound !== null ? results[currentRound]?.[matchKey] : null
 
 const podParticipants = userPodId ? pods[userPodId] || [] : [];
 
-const podExpectedGames = round ? Math.floor(podParticipants.length / 2) * round : 0;
+const podExpectedGames = currentRound ? Math.floor(podParticipants.length / 2) * currentRound : 0;
 
 const podReportedGames = Object.entries(results)
-  .filter(([roundNum, matches]) => {
+  .filter(([_, matches]) => {
     return Object.keys(matches).some(matchKey => {
       const [id1, id2] = matchKey.split('_');
       return podParticipants.includes(id1) && podParticipants.includes(id2);
@@ -166,7 +166,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
     if (!id || !userUid) return;
 
     // If tournament has started, confirm before dropping
-    if (round || draftStarted) {
+    if (draftStarted) {
         const confirmDrop = window.confirm(
         "Are you sure you want to drop from the tournament? This action cannot be undone."
         );
@@ -195,7 +195,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
   }
 
   const finalizeWinner = async () => {
-    if (!id || !pendingWinnerUid || !userUid || !userOpponent || round === null) return
+    if (!id || !pendingWinnerUid || !userUid || !userOpponent) return
 
     const matchKey = getMatchKey(userUid, userOpponent)
 
@@ -214,8 +214,8 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
 
     const updatedResults = {
       ...results,
-      [round]: {
-        ...(results[round] || {}),
+      [currentRound]: {
+        ...(results[currentRound] || {}),
         [matchKey]: pendingWinnerUid,
       }
     }
@@ -311,8 +311,9 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
   if (!confirmStart) return;
 
   const allPairings: Pair[] = [];
+  const podRounds: Record<string, number> = {}; // <-- New podRounds object
 
-  for (const podMembers of Object.values(pods)) {
+  for (const [podId, podMembers] of Object.entries(pods)) {
     const half = Math.floor(podMembers.length / 2);
 
     for (let i = 0; i < half; i++) {
@@ -320,6 +321,8 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
       const player2 = podMembers[i + half] || null;
       allPairings.push({ player1, player2 });
     }
+
+    podRounds[podId] = 1; // Set round 1 for each pod
   }
 
   try {
@@ -327,15 +330,14 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
       draftStarted: true,
       pairings: { 1: allPairings },
       results: { 1: {} },
-      round: 1
+      podRounds, // <- store pod-specific rounds in Firestore
     });
 
     setDraftStarted(true);
     setPairings(allPairings);
     setResults({});
-    setRound(1);
+    setPodRounds(podRounds); // <- set local podRounds state
 
-    // Set user's pod ID if not already set
     for (const [podId, members] of Object.entries(pods)) {
       if (members.includes(userUid)) {
         setUserPodId(podId);
@@ -411,13 +413,13 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
   
 
   const handleCheckRemainingDraftMatches = () => {
-  if (!userPodId || round === null || !results[round]) {
+  if (!userPodId || !results[currentRound]) {
     alert("No current round or pod data available.");
     return;
   }
 
   const podPlayers = pods[userPodId] || [];
-  const roundResults = results[round] || {};
+  const roundResults = results[currentRound] || {};
   const unfinishedGames: string[] = [];
 
   for (let i = 0; i < podPlayers.length; i++) {
@@ -477,7 +479,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
 )}
 
 
-      {(!round && !draftStarted) ? (
+      {!draftStarted ? (
             hasJoined ? (
                 <button onClick={handleDrop}>Drop from Tournament</button>
             ) : (
@@ -490,7 +492,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
         )}
 
 
-      {round && ( //will likely have to change because now round is being stored per pod
+      {currentRound > 0 && ( //will likely have to change because now round is being stored per pod
   matchWinnerUid ? (
     <div style={{ marginTop: '20px', fontWeight: 'bold' }}>
       {participantMap[matchWinnerUid]} defeated {
@@ -565,7 +567,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
         </>
         )}
 
-        {format === 'draft' && (
+        {
 <div style={{ marginTop: '30px' }}>
   <h3>Draft Pods</h3>
 
@@ -605,13 +607,13 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
     </div>)}
     
   </div>
-)}
+}
 
 
 
       <h3 style={{ marginTop: '30px' }}>Participants</h3>
         <ul>
-        {participants.map((uid, i) => (
+        {participants.map((uid, _) => (
             <li key={uid}>
             {participantMap[uid] || '(Unknown)'}
             {' — '}
