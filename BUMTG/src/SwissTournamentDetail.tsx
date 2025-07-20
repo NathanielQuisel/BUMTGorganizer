@@ -10,18 +10,15 @@ import {
   arrayRemove
 } from 'firebase/firestore'
 
-export default function TournamentDetail() {
+export default function SwissTournamentDetail() {
   type Pair = { player1: string, player2: string | null }
 
   const { id } = useParams()
   const [name, setName] = useState('')
-  const [format, setFormat] = useState('')
-  const [creatorUid, setCreatorUid] = useState('')
   const [participants, setParticipants] = useState<string[]>([])
   const [isOwner, setIsOwner] = useState(false)
   const [hasJoined, setHasJoined] = useState(false)
   const [userUid, setUserUid] = useState('')
-  const [participantNames, setParticipantNames] = useState<string[]>([])
   const [pairings, setPairings] = useState<Pair[]>([])
   const [participantMap, setParticipantMap] = useState<Record<string, string>>({})
   const [userOpponent, setUserOpponent] = useState<string | null>(null)
@@ -31,14 +28,7 @@ export default function TournamentDetail() {
   const [confirmingWinner, setConfirmingWinner] = useState(false)
   const [pendingWinnerUid, setPendingWinnerUid] = useState<string | null>(null)
   const [wins, setWins] = useState<Record<string, number>>({})
-  const [results, setResults] = useState<Record<string, Record<string, string>>>({})
-  const [pods, setPods] = useState<Record<string, string[]>>({})
-  const [nextPodId, setNextPodId] = useState(1)
-  const [podSizeInput, setPodSizeInput] = useState<number>(0)
-  const [draftStarted, setDraftStarted] = useState(false)
-  const [userPodId, setUserPodId] = useState<string | null>(null)
-  const [podRounds, setPodRounds] = useState<Record<string, number>>({})
-  
+  const [results, setResults] = useState<Record<string, Record<string, string>>>({})  
 
 
 
@@ -56,20 +46,13 @@ export default function TournamentDetail() {
         if (docSnap.exists()) {
             const data = docSnap.data()
             setName(data.name)
-            setCreatorUid(data.creatorUid)
             setParticipants(data.participants || [])
-            setFormat(data.format || '')
             setIsOwner(data.creatorUid === user.uid)
             setHasJoined((data.participants || []).includes(user.uid))
             const currentRound = data.round || null
             setRound(currentRound)
             setWins(data.wins || {})
             setResults(data.results || {})
-            setPods(data.pods || {})
-            setNextPodId(
-            data.pods ? Math.max(...Object.keys(data.pods).map(Number)) + 1 : 1
-            )
-            setDraftStarted(data.draftStarted || false);
 
 
 
@@ -85,15 +68,6 @@ export default function TournamentDetail() {
                 break
             }
             }
-            if (data.draftStarted && data.pods) {
-                for (const [podId, members] of Object.entries(data.pods as Record<string, string[]>)) {
-                    if (members.includes(user.uid)) {
-                        setUserPodId(podId);
-                        break;
-                    }
-                }
-            }
-            setPodRounds(data.rounds || {})
         }
         })
 
@@ -117,7 +91,6 @@ export default function TournamentDetail() {
           }
         })
       )
-      setParticipantNames(names)
       const map: Record<string, string> = {}
       participants.forEach((uid, i) => {
         map[uid] = names[i]
@@ -140,29 +113,6 @@ const totalGamesReported = Object.values(results)
   .reduce((sum, roundResults) => sum + Object.keys(roundResults).length, 0);
 const totalGamesRemaining = totalGamesExpected - totalGamesReported;
 
-const podParticipants = userPodId ? pods[userPodId] || [] : [];
-
-const podExpectedGames = round ? Math.floor(podParticipants.length / 2) * round : 0;
-
-const podReportedGames = Object.entries(results)
-  .filter(([roundNum, matches]) => {
-    return Object.keys(matches).some(matchKey => {
-      const [id1, id2] = matchKey.split('_');
-      return podParticipants.includes(id1) && podParticipants.includes(id2);
-    });
-  })
-  .reduce((sum, [_, matches]) => {
-    const podMatchCount = Object.entries(matches).filter(([matchKey]) => {
-      const [id1, id2] = matchKey.split('_');
-      return podParticipants.includes(id1) && podParticipants.includes(id2);
-    }).length;
-    return sum + podMatchCount;
-  }, 0);
-
-const podGamesRemaining = podExpectedGames - podReportedGames;
-
-
-
   const handleJoin = async () => {
     if (!id || !userUid) return
     await updateDoc(doc(db, 'tournaments', id), {
@@ -176,7 +126,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
     if (!id || !userUid) return;
 
     // If tournament has started, confirm before dropping
-    if (round || draftStarted) {
+    if (round) {
         const confirmDrop = window.confirm(
         "Are you sure you want to drop from the tournament? This action cannot be undone."
         );
@@ -340,125 +290,6 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
   setPairings(newPairs);
 };
 
-
-  const handleAddPod = async () => {
-    if (!id || podSizeInput <= 0) return
-
-    const newPod = new Array(podSizeInput).fill('')
-    const newPodId = nextPodId
-
-    const updatedPods = {
-        ...pods,
-        [newPodId]: newPod
-    }
-
-    try {
-        await updateDoc(doc(db, 'tournaments', id), {
-        pods: updatedPods
-        })
-
-        setPods(updatedPods)
-        setNextPodId(prev => prev + 1)
-    } catch (err) {
-        console.error('Failed to save pod to Firestore:', err)
-    }
-  }
-
-
-  const handleDeletePod = async (podIdToDelete: string) => {
-    if (!id) return;
-
-    const updatedPods = { ...pods };
-    delete updatedPods[podIdToDelete];
-
-    try {
-        await updateDoc(doc(db, 'tournaments', id), {
-        pods: updatedPods
-        });
-        setPods(updatedPods);
-    } catch (err) {
-        console.error('Failed to delete pod:', err);
-    }
-  };
-
-  const handleRandomizePods = async () => {
-    if (!id || Object.keys(pods).length === 0 || participants.length === 0) return;
-
-    // 1. Shuffle participants
-    const shuffled = [...participants].sort(() => Math.random() - 0.5);
-
-    // 2. Assign to pods
-    const newPods: Record<string, string[]> = {};
-    let index = 0;
-
-    for (const [podId, podArray] of Object.entries(pods)) {
-        const podSize = podArray.length;
-        newPods[podId] = [];
-
-        for (let i = 0; i < podSize && index < shuffled.length; i++) {
-        newPods[podId].push(shuffled[index]);
-        index++;
-        }
-    }
-
-    // 3. Save to database
-    try {
-        const docRef = doc(db, 'tournaments', id);
-        await updateDoc(docRef, { pods: newPods });
-        setPods(newPods);
-        console.log('Pods randomized and saved successfully.');
-    } catch (err) {
-        console.error('Error updating randomized pods:', err);
-    }
-  };
-
-  const handleStartDraft = async () => {
-  if (!id) return;
-
-  const confirmStart = window.confirm(
-    "Are you sure you want to start the draft tournament? This action cannot be undone."
-  );
-  if (!confirmStart) return;
-
-  const allPairings: Pair[] = [];
-
-  for (const podMembers of Object.values(pods)) {
-    const half = Math.floor(podMembers.length / 2);
-
-    for (let i = 0; i < half; i++) {
-      const player1 = podMembers[i];
-      const player2 = podMembers[i + half] || null;
-      allPairings.push({ player1, player2 });
-    }
-  }
-
-  try {
-    await updateDoc(doc(db, 'tournaments', id), {
-      draftStarted: true,
-      pairings: { 1: allPairings },
-      results: { 1: {} },
-      round: 1
-    });
-
-    setDraftStarted(true);
-    setPairings(allPairings);
-    setResults({});
-    setRound(1);
-
-    // Set user's pod ID if not already set
-    for (const [podId, members] of Object.entries(pods)) {
-      if (members.includes(userUid)) {
-        setUserPodId(podId);
-        break;
-      }
-    }
-
-    console.log('Draft started and pairings initialized.');
-  } catch (error) {
-    console.error('Error starting draft tournament:', error);
-  }
-};
-
   const handleCheckRemainingMatches = () => {
   if (!results || !pairings || !round) return;
 
@@ -481,100 +312,6 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
   }
 };
 
-
-  const handlePairNextDraftRound = async () => {
-  if (!id || !userUid || !userPodId) return;
-
-  const docRef = doc(db, 'tournaments', id);
-  const docSnap = await getDoc(docRef);
-
-  if (!docSnap.exists()) {
-    console.error('Tournament not found');
-    return;
-  }
-
-  const data = docSnap.data();
-  const wins: Record<string, number> = data.wins || {};
-  const allPods: Record<string, string[]> = data.pods || {};
-  const podPlayers = allPods[userPodId] || [];
-  const existingPairings = data.pairings || {};
-  const existingResults = data.results || {};
-  const podRounds = data.rounds || {};
-
-  const currentPodRound = podRounds[userPodId] || 0;
-  const nextPodRound = currentPodRound + 1;
-
-  const sorted = [...podPlayers].sort((a, b) => (wins[b] || 0) - (wins[a] || 0));
-
-  const podPairs: Pair[] = [];
-  for (let i = 0; i < sorted.length; i += 2) {
-    const p1 = sorted[i];
-    const p2 = sorted[i + 1] || null;
-    podPairs.push({ player1: p1, player2: p2 });
-  }
-
-  const updatedPairings = {
-    ...existingPairings,
-    [nextPodRound]: [...(existingPairings[nextPodRound] || []), ...podPairs],
-  };
-
-  const updatedResults = {
-    ...existingResults,
-    [nextPodRound]: {
-      ...(existingResults[nextPodRound] || {}),
-    },
-  };
-
-  const updatedRounds = {
-    ...podRounds,
-    [userPodId]: nextPodRound,
-  };
-
-  await updateDoc(docRef, {
-    pairings: updatedPairings,
-    results: updatedResults,
-    rounds: updatedRounds,
-  });
-
-  setPairings(podPairs);
-  setPodRounds(updatedRounds);
-};
-
-  
-
-  const handleCheckRemainingDraftMatches = () => {
-  if (!userPodId || round === null || !results[round]) {
-    alert("No current round or pod data available.");
-    return;
-  }
-
-  const podPlayers = pods[userPodId] || [];
-  const roundResults = results[round] || {};
-  const unfinishedGames: string[] = [];
-
-  for (let i = 0; i < podPlayers.length; i++) {
-    for (let j = i + 1; j < podPlayers.length; j++) {
-      const uid1 = podPlayers[i];
-      const uid2 = podPlayers[j];
-      const matchKey = getMatchKey(uid1, uid2);
-
-      if (!roundResults[matchKey]) {
-        const name1 = participantMap[uid1] || '(Unknown)';
-        const name2 = participantMap[uid2] || '(Unknown)';
-        unfinishedGames.push(`${name1} vs ${name2}`);
-      }
-    }
-  }
-
-  if (unfinishedGames.length > 0) {
-    alert("Unfinished Matches:\n" + unfinishedGames.join('\n'));
-  } else {
-    alert("All matches in your pod are complete.");
-  }
-};
-
-
-
   return (
     <div style={{ padding: '20px' }}>
       <h2>{name}</h2>
@@ -582,7 +319,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
       {isOwner && (
         
         <div style={{ marginBottom: '20px' }}>
-            {format === 'swiss' && (
+            {
   round ? (
     totalGamesRemaining > 0 ? (
       <button onClick={handleCheckRemainingMatches}>
@@ -598,38 +335,16 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
       Start Tournament
     </button>
   )
-)}
-            {!round && format === 'swiss' && (
+}
+            {!round  && (
                 <button onClick={handleRandomizePairings}>Randomize Pairings</button>
-            )}
-
-            {format === 'draft' && !draftStarted && (
-                <>
-                    <button onClick={handleStartDraft}>
-                    Start Tournament
-                    </button>
-                    <button onClick={handleRandomizePods}>
-                    Randomize Pods
-                    </button>
-                </>
             )}
 
         </div>
       )}
-   {format === 'draft' && draftStarted && userPodId && (
-  podGamesRemaining > 0 ? (
-    <button onClick={handleCheckRemainingDraftMatches}>
-      Check Remaining Matches
-    </button>
-  ) : (
-    <button onClick={handlePairNextDraftRound}>
-      Pair Next Round
-    </button>
-  )
-)}
 
 
-      {(!round && !draftStarted) ? (
+      {!round ? (
             hasJoined ? (
                 <button onClick={handleDrop}>Drop from Tournament</button>
             ) : (
@@ -640,7 +355,7 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
                 <button onClick={handleDrop}>Drop from Tournament</button>
             )
         )}
-{isOwner && format === 'swiss' && round && (
+{isOwner && round && (
   <div style={{ marginTop: '20px', fontWeight: 'bold' }}>
     Total Matches Remaining:{' '}
     {totalGamesRemaining}
@@ -722,48 +437,6 @@ const podGamesRemaining = podExpectedGames - podReportedGames;
             </ul>
         </>
         )}
-
-        {format === 'draft' && (
-<div style={{ marginTop: '30px' }}>
-  <h3>Draft Pods</h3>
-
-  {Object.entries(pods)
-    .filter(([podId]) => !draftStarted || podId === userPodId)
-    .map(([podId, members]) => (
-      <div key={podId} style={{ marginBottom: '10px', border: '1px solid #ccc', padding: '10px' }}>
-        <strong>Pod {podId}</strong>:{" "}
-        {members.length > 0
-          ? members.map((uid) => participantMap[uid] || '(Unknown)').join(', ')
-          : '(empty)'}
-
-        {isOwner && !draftStarted && (
-          <button
-            onClick={() => handleDeletePod(podId)}
-            style={{ marginLeft: '10px', color: 'white', backgroundColor: 'red' }}
-          >
-            Delete Pod
-          </button>
-        )}
-      </div>
-    ))}
-
-
-    {isOwner && !draftStarted && (<div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-      <label>
-        Pod Size:
-        <input
-          type="number"
-          min={0}
-          value={podSizeInput}
-          onChange={e => setPodSizeInput(parseInt(e.target.value))}
-          style={{ width: '60px', marginLeft: '5px' }}
-        />
-      </label>
-      <button onClick={handleAddPod}>Add Pod</button>
-    </div>)}
-    
-  </div>
-)}
 
 
 

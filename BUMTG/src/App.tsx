@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import Dashboard from './Dashboard'
 import Tournaments from './Tournaments'
 import CreateTournament from './CreateTournament'
-import TournamentDetail from './TournamentDetail'
+import TournamentRouter from './TournamentRouter'
 import ELO from './ELO'
 import PreconLeague from './PreconLeague'
 import CreatePreconLeague from './CreatePreconLeague'
@@ -65,7 +65,7 @@ export default function App() {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="tournaments" element={<Tournaments />} />
       <Route path="create-tournament" element={<CreateTournament />} />
-      <Route path="/tournament/:id" element={<TournamentDetail />} />
+      <Route path="/tournament/:id" element={<TournamentRouter />} />
       <Route path="/elo" element={<ELO />} />
       <Route path="/precon-league" element={<PreconLeague />} />
       <Route path="/create-precon-league" element={<CreatePreconLeague />} />
