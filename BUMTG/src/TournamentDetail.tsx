@@ -37,6 +37,7 @@ export default function TournamentDetail() {
   const [podSizeInput, setPodSizeInput] = useState<number>(0)
   const [draftStarted, setDraftStarted] = useState(false)
   const [userPodId, setUserPodId] = useState<string | null>(null)
+  
 
 
 
@@ -132,6 +133,33 @@ export default function TournamentDetail() {
 
   const matchKey = userUid && userOpponent ? getMatchKey(userUid, userOpponent) : null
   const matchWinnerUid = matchKey && round !== null ? results[round]?.[matchKey] : null
+  const totalGamesExpected = round ? Math.floor(participants.length / 2) * round : 0;
+const totalGamesReported = Object.values(results)
+  .reduce((sum, roundResults) => sum + Object.keys(roundResults).length, 0);
+const totalGamesRemaining = totalGamesExpected - totalGamesReported;
+
+const podParticipants = userPodId ? pods[userPodId] || [] : [];
+
+const podExpectedGames = round ? Math.floor(podParticipants.length / 2) * round : 0;
+
+const podReportedGames = Object.entries(results)
+  .filter(([roundNum, matches]) => {
+    return Object.keys(matches).some(matchKey => {
+      const [id1, id2] = matchKey.split('_');
+      return podParticipants.includes(id1) && podParticipants.includes(id2);
+    });
+  })
+  .reduce((sum, [_, matches]) => {
+    const podMatchCount = Object.entries(matches).filter(([matchKey]) => {
+      const [id1, id2] = matchKey.split('_');
+      return podParticipants.includes(id1) && podParticipants.includes(id2);
+    }).length;
+    return sum + podMatchCount;
+  }, 0);
+
+const podGamesRemaining = podExpectedGames - podReportedGames;
+
+
 
   const handleJoin = async () => {
     if (!id || !userUid) return
@@ -258,49 +286,58 @@ export default function TournamentDetail() {
   }
 
   const handlePairNextRound = async () => {
-    if (!id || round === null) return
+  if (!id || round === null) return;
 
-    const nextRound = round + 1
-    const shuffled = [...participants].sort(() => Math.random() - 0.5)
-    const newPairs: Pair[] = []
+  const nextRound = round + 1;
 
-    for (let i = 0; i < shuffled.length; i += 2) {
-      const p1 = shuffled[i]
-      const p2 = shuffled[i + 1] || null
-      newPairs.push({ player1: p1, player2: p2 })
-    }
+  const docRef = doc(db, 'tournaments', id);
+  const docSnap = await getDoc(docRef);
 
-    const docRef = doc(db, 'tournaments', id)
-    const docSnap = await getDoc(docRef)
-
-    if (!docSnap.exists()) {
-      console.error('Tournament document not found.')
-      return
-    }
-
-    const data = docSnap.data()
-    const existingPairings = data.pairings || {}
-    const existingResults = data.results || {}
-
-    const updatedPairings = {
-      ...existingPairings,
-      [nextRound]: newPairs,
-    }
-
-    const updatedResults = {
-      ...existingResults,
-      [nextRound]: {},
-    }
-
-    await updateDoc(docRef, {
-      round: nextRound,
-      pairings: updatedPairings,
-      results: updatedResults,
-    })
-
-    setRound(nextRound)
-    setPairings(newPairs)
+  if (!docSnap.exists()) {
+    console.error('Tournament document not found.');
+    return;
   }
+
+  const data = docSnap.data();
+  const existingPairings = data.pairings || {};
+  const existingResults = data.results || {};
+  const wins: Record<string, number> = data.wins || {};
+
+  // Sort participants by number of wins (descending)
+  const sorted = [...participants].sort((a, b) => {
+    const winsA = wins[a] || 0;
+    const winsB = wins[b] || 0;
+    return winsB - winsA;
+  });
+
+  // Pair players by win count
+  const newPairs: Pair[] = [];
+  for (let i = 0; i < sorted.length; i += 2) {
+    const p1 = sorted[i];
+    const p2 = sorted[i + 1] || null; // bye if odd number
+    newPairs.push({ player1: p1, player2: p2 });
+  }
+
+  const updatedPairings = {
+    ...existingPairings,
+    [nextRound]: newPairs,
+  };
+
+  const updatedResults = {
+    ...existingResults,
+    [nextRound]: {},
+  };
+
+  await updateDoc(docRef, {
+    round: nextRound,
+    pairings: updatedPairings,
+    results: updatedResults,
+  });
+
+  setRound(nextRound);
+  setPairings(newPairs);
+};
+
 
   const handleAddPod = async () => {
     if (!id || podSizeInput <= 0) return
@@ -374,27 +411,159 @@ export default function TournamentDetail() {
   };
 
   const handleStartDraft = async () => {
-    if (!id) return;
+  if (!id) return;
 
-    const confirmDrop = window.confirm(
-        "Are you sure you want to start the tournament? This action cannot be undone."
-    );
-    if (!confirmDrop) return;
+  const confirmStart = window.confirm(
+    "Are you sure you want to start the draft tournament? This action cannot be undone."
+  );
+  if (!confirmStart) return;
 
-    setDraftStarted(true);
+  const allPairings: Pair[] = [];
 
-    // Find which pod the current user is in
-    for (const [podId, members] of Object.entries(pods)) {
-        if (members.includes(userUid)) {
-        setUserPodId(podId);
-        break;
-        }
+  for (const podMembers of Object.values(pods)) {
+    const half = Math.floor(podMembers.length / 2);
+
+    for (let i = 0; i < half; i++) {
+      const player1 = podMembers[i];
+      const player2 = podMembers[i + half] || null;
+      allPairings.push({ player1, player2 });
     }
-
-    // Optionally save draftStarted state in Firestore if you want persistence:
-    await updateDoc(doc(db, 'tournaments', id), { draftStarted: true });
   }
 
+  try {
+    await updateDoc(doc(db, 'tournaments', id), {
+      draftStarted: true,
+      pairings: { 1: allPairings },
+      results: { 1: {} },
+      round: 1
+    });
+
+    setDraftStarted(true);
+    setPairings(allPairings);
+    setResults({});
+    setRound(1);
+
+    // Set user's pod ID if not already set
+    for (const [podId, members] of Object.entries(pods)) {
+      if (members.includes(userUid)) {
+        setUserPodId(podId);
+        break;
+      }
+    }
+
+    console.log('Draft started and pairings initialized.');
+  } catch (error) {
+    console.error('Error starting draft tournament:', error);
+  }
+};
+
+  const handleCheckRemainingMatches = () => {
+  if (!results || !pairings || !round) return;
+
+  const currentRoundResults = results[round] || {};
+  const unreportedMatches = pairings.filter(pair => {
+    const matchKey = getMatchKey(pair.player1, pair.player2 ?? 'BYE');
+    return !currentRoundResults[matchKey];
+  });
+
+  if (unreportedMatches.length === 0) {
+    alert("All matches have been reported.");
+  } else {
+    const messages = unreportedMatches.map(pair => {
+      const p1 = participantMap[pair.player1] || '(Unknown)';
+      const p2 = pair.player2 ? participantMap[pair.player2] || '(Unknown)' : 'BYE';
+      return `${p1} vs ${p2}`;
+    });
+
+    alert("Unfinished Matches:\n" + messages.join('\n'));
+  }
+};
+
+
+  const handlePairNextDraftRound = async () => {
+  if (!id || round === null) return;
+
+  const nextRound = round + 1;
+
+  const docRef = doc(db, 'tournaments', id);
+  const docSnap = await getDoc(docRef);
+
+  if (!docSnap.exists()) {
+    console.error('Tournament document not found.');
+    return;
+  }
+
+  const data = docSnap.data();
+  const existingPairings = data.pairings || {};
+  const existingResults = data.results || {};
+  const wins: Record<string, number> = data.wins || {};
+
+  // Sort participants by number of wins (descending)
+  const sorted = [...participants].sort((a, b) => {
+    const winsA = wins[a] || 0;
+    const winsB = wins[b] || 0;
+    return winsB - winsA;
+  });
+
+  // Pair players by win count
+  const newPairs: Pair[] = [];
+  for (let i = 0; i < sorted.length; i += 2) {
+    const p1 = sorted[i];
+    const p2 = sorted[i + 1] || null; // bye if odd number
+    newPairs.push({ player1: p1, player2: p2 });
+  }
+
+  const updatedPairings = {
+    ...existingPairings,
+    [nextRound]: newPairs,
+  };
+
+  const updatedResults = {
+    ...existingResults,
+    [nextRound]: {},
+  };
+
+  await updateDoc(docRef, {
+    round: nextRound,
+    pairings: updatedPairings,
+    results: updatedResults,
+  });
+
+  setRound(nextRound);
+  setPairings(newPairs);
+};
+  
+
+  const handleCheckRemainingDraftMatches = () => {
+  if (!userPodId || round === null || !results[round]) {
+    alert("No current round or pod data available.");
+    return;
+  }
+
+  const podPlayers = pods[userPodId] || [];
+  const roundResults = results[round] || {};
+  const unfinishedGames: string[] = [];
+
+  for (let i = 0; i < podPlayers.length; i++) {
+    for (let j = i + 1; j < podPlayers.length; j++) {
+      const uid1 = podPlayers[i];
+      const uid2 = podPlayers[j];
+      const matchKey = getMatchKey(uid1, uid2);
+
+      if (!roundResults[matchKey]) {
+        const name1 = participantMap[uid1] || '(Unknown)';
+        const name2 = participantMap[uid2] || '(Unknown)';
+        unfinishedGames.push(`${name1} vs ${name2}`);
+      }
+    }
+  }
+
+  if (unfinishedGames.length > 0) {
+    alert("Unfinished Matches:\n" + unfinishedGames.join('\n'));
+  } else {
+    alert("All matches in your pod are complete.");
+  }
+};
 
 
 
@@ -405,20 +574,28 @@ export default function TournamentDetail() {
       {isOwner && (
         
         <div style={{ marginBottom: '20px' }}>
-            {format === 'swiss' && (round ? (
-                <button onClick={handlePairNextRound}>
-                    {'Pair Next Round'}
-                </button>
-            ) : (
-               <button onClick={handleStartTournament}>
-                    {'Start Tournament'}
-                </button> 
-            ))}
+            {format === 'swiss' && (
+  round ? (
+    totalGamesRemaining > 0 ? (
+      <button onClick={handleCheckRemainingMatches}>
+        Check Remaining Matches
+      </button>
+    ) : (
+      <button onClick={handlePairNextRound}>
+        Pair Next Round
+      </button>
+    )
+  ) : (
+    <button onClick={handleStartTournament}>
+      Start Tournament
+    </button>
+  )
+)}
             {!round && format === 'swiss' && (
                 <button onClick={handleRandomizePairings}>Randomize Pairings</button>
             )}
 
-            {!draftStarted && format === 'draft' && (
+            {format === 'draft' && !draftStarted && (
                 <>
                     <button onClick={handleStartDraft}>
                     Start Tournament
@@ -431,6 +608,17 @@ export default function TournamentDetail() {
 
         </div>
       )}
+   {format === 'draft' && draftStarted && userPodId && (
+  podGamesRemaining > 0 ? (
+    <button onClick={handleCheckRemainingDraftMatches}>
+      Check Remaining Matches
+    </button>
+  ) : (
+    <button onClick={handlePairNextDraftRound}>
+      Pair Next Round
+    </button>
+  )
+)}
 
 
       {(!round && !draftStarted) ? (
@@ -444,6 +632,12 @@ export default function TournamentDetail() {
                 <button onClick={handleDrop}>Drop from Tournament</button>
             )
         )}
+{isOwner && format === 'swiss' && round && (
+  <div style={{ marginTop: '20px', fontWeight: 'bold' }}>
+    Total Matches Remaining:{' '}
+    {totalGamesRemaining}
+  </div>
+)}
 
 
       {round && (
@@ -540,12 +734,6 @@ export default function TournamentDetail() {
             style={{ marginLeft: '10px', color: 'white', backgroundColor: 'red' }}
           >
             Delete Pod
-          </button>
-        )}
-
-        {draftStarted && podId === userPodId && (
-          <button style={{ marginLeft: '10px' }}>
-            Start Pod
           </button>
         )}
       </div>
