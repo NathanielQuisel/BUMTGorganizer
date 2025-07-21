@@ -1,0 +1,19 @@
+:root {
+  --bu-red: #cc0000;
+  --bu-black: #2D2926;
+  --bu-white: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: 'Arial', sans-serif;
+  background-color: var(--bu-white);
+  color: var(--bu-black);
+}
+
+button {
+  font-size: 1rem;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+}
